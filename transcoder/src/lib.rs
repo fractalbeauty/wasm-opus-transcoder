@@ -410,7 +410,8 @@ fn encode(
         _ => return Err(TranscodeError::InvalidChannels.into()),
     };
 
-    let mut encoder = opus::Encoder::new(48000, opus_channels, opus::Application::Audio)?;
+    let mut encoder =
+        opus::Encoder::new(SAMPLE_RATE as u32, opus_channels, opus::Application::Audio)?;
     encoder.set_bitrate(opus::Bitrate::Bits(128000))?;
 
     #[rustfmt::skip]
@@ -419,7 +420,7 @@ fn encode(
         1, // version, always 1
         num_channels as u8, // channel count
         0, 0, // pre-skip, written later
-        0, 0, 0, 0, // input sample rate (informational). we don't write this atm
+        0, 0, 0, 0, // input sample rate, written later
         0, 0, // output gain
         0, // channel mapping family
     ];
@@ -427,6 +428,9 @@ fn encode(
     // write pre-skip
     let skip_samples = encoder.get_lookahead().unwrap() as usize;
     LittleEndian::write_u16(&mut opus_header[10..12], skip_samples as u16);
+
+    // write sample rate
+    LittleEndian::write_u32(&mut opus_header[12..16], SAMPLE_RATE as u32);
 
     let mut comment_header = Vec::new();
     comment_header.extend(b"OpusTags"); // magic signature
