@@ -4,7 +4,7 @@ use rubato::{Resampler, SincFixedIn, SincFixedOut, SincInterpolationParameters};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{cmp::min, error::Error, io::Cursor};
+use std::{cmp::min, io::Cursor};
 use symphonia::core::{
     audio::{SampleBuffer, SignalSpec},
     codecs::DecoderOptions,
@@ -30,6 +30,16 @@ pub enum TranscodeError {
     NoTrack,
     #[error("invalid channels")]
     InvalidChannels,
+    #[error(transparent)]
+    Opus(#[from] opus::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Symphonia(#[from] symphonia::core::errors::Error),
+    #[error(transparent)]
+    RubatoResample(#[from] rubato::ResampleError),
+    #[error(transparent)]
+    RubatoResamplerConstruction(#[from] rubato::ResamplerConstructionError),
 }
 
 #[derive(Debug)]
@@ -73,7 +83,7 @@ pub fn transcode(
     bytes: Vec<u8>,
     options: TranscodeOptions,
     on_progress: impl Fn(Progress),
-) -> Result<TranscodeOutput, Box<dyn Error>> {
+) -> Result<TranscodeOutput, TranscodeError> {
     on_progress(Progress::Loading);
 
     let audio_hash = hash_bytes(&bytes);
@@ -289,7 +299,7 @@ fn resample_oneshot(
     source: Vec<Vec<f32>>,
     spec: SignalSpec,
     on_progress: impl Fn(Progress),
-) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+) -> Result<Vec<Vec<f32>>, TranscodeError> {
     on_progress(Progress::Resampling(0));
 
     let mut resampler = {
@@ -321,7 +331,7 @@ fn resample_chunks(
     source: Vec<Vec<f32>>,
     spec: SignalSpec,
     on_progress: impl Fn(Progress),
-) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
+) -> Result<Vec<Vec<f32>>, TranscodeError> {
     on_progress(Progress::Resampling(0));
     let mut progress = 0;
 
@@ -387,7 +397,7 @@ fn encode(
     audio: Vec<f32>,
     num_channels: usize,
     on_progress: impl Fn(Progress),
-) -> Result<Vec<u8>, Box<dyn Error>> {
+) -> Result<Vec<u8>, TranscodeError> {
     on_progress(Progress::Encoding(0));
     let mut progress = 0;
 
@@ -407,7 +417,7 @@ fn encode(
     let opus_channels = match num_channels {
         1 => opus::Channels::Mono,
         2 => opus::Channels::Stereo,
-        _ => return Err(TranscodeError::InvalidChannels.into()),
+        _ => return Err(TranscodeError::InvalidChannels),
     };
 
     let mut encoder =
@@ -553,9 +563,9 @@ pub enum ArtError {
     #[error("unsupported format: {0}")]
     MediaType(String),
     #[error("decoding failed: {0}")]
-    Decode(String),
+    Decode(image::ImageError),
     #[error("encoding failed: {0}")]
-    Encode(String),
+    Encode(image::ImageError),
 }
 
 #[derive(Debug, Clone)]
@@ -579,23 +589,21 @@ pub struct Art {
     pub data_2048: Vec<u8>,
 }
 
-pub fn process_art(media_type: &str, bytes: Vec<u8>) -> Result<Art, Box<dyn Error>> {
+pub fn process_art(media_type: &str, bytes: Vec<u8>) -> Result<Art, ArtError> {
     // for bundle size, we only support png and jpg visuals
     if matches!(media_type, "image/png" | "image/jpg" | "image/jpeg") {
         let reader = image::io::Reader::new(Cursor::new(&bytes))
             .with_guessed_format()
             .expect("cursor io never fails");
 
-        let image = reader
-            .decode()
-            .map_err(|e| ArtError::Decode(e.to_string()))?;
+        let image = reader.decode().map_err(ArtError::Decode)?;
 
         let resized_512 = image.resize(512, 512, image::imageops::FilterType::Nearest);
         let mut data_512: Vec<u8> = vec![];
         let mut encoder_512 = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut data_512, 90);
         encoder_512
             .encode_image(&resized_512)
-            .map_err(|e| ArtError::Encode(e.to_string()))?;
+            .map_err(ArtError::Encode)?;
 
         let resized_2048 = image.resize(2048, 2048, image::imageops::FilterType::Nearest);
         let mut data_2048: Vec<u8> = vec![];
@@ -603,7 +611,7 @@ pub fn process_art(media_type: &str, bytes: Vec<u8>) -> Result<Art, Box<dyn Erro
             image::codecs::jpeg::JpegEncoder::new_with_quality(&mut data_2048, 95);
         encoder_2048
             .encode_image(&resized_2048)
-            .map_err(|e| ArtError::Encode(e.to_string()))?;
+            .map_err(ArtError::Encode)?;
 
         // compute hash of input
         let hash = hash_bytes(&bytes);
@@ -614,6 +622,6 @@ pub fn process_art(media_type: &str, bytes: Vec<u8>) -> Result<Art, Box<dyn Erro
             data_2048,
         })
     } else {
-        Err(ArtError::MediaType(media_type.to_owned()).into())
+        Err(ArtError::MediaType(media_type.to_owned()))
     }
 }
