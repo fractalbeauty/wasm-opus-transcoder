@@ -86,6 +86,7 @@ pub struct TranscodeOutput {
     pub data: Vec<u8>,
     pub metadata: Metadata,
     pub visuals: Vec<ArtOriginal>,
+    pub file_hash: String,
     pub audio_hash: String,
 }
 
@@ -96,7 +97,7 @@ pub fn transcode(
 ) -> Result<TranscodeOutput, TranscodeError> {
     on_progress(Progress::Loading);
 
-    let audio_hash = hash_bytes(&bytes);
+    let file_hash = hash_bytes(&bytes);
 
     let cursor = Cursor::new(bytes);
     let mss = MediaSourceStream::new(Box::new(cursor), Default::default());
@@ -154,10 +155,14 @@ pub fn transcode(
     let (metadata, visuals) = read_metadata(spec, &mut probe_result);
 
     // read packets
+    let mut audio_hasher = Sha256::new();
     let mut source = vec![Vec::new(); spec.channels.count()];
     loop {
         match probe_result.format.next_packet() {
             Ok(packet) => {
+                // hash the bytes of the audio packets separately from the hash of the entire file
+                audio_hasher.update(packet.buf());
+
                 let decoded = decoder.decode(&packet)?;
 
                 if decoded.frames() > 0 {
@@ -184,6 +189,7 @@ pub fn transcode(
             Err(e) => return Err(e.into()),
         }
     }
+    let audio_hash = format!("{:x}", audio_hasher.finalize());
 
     // resample if needed
     let mut resampled = if spec.rate != 48000 {
@@ -214,6 +220,7 @@ pub fn transcode(
         data,
         metadata,
         visuals,
+        file_hash,
         audio_hash,
     })
 }
