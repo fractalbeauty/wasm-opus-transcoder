@@ -18,10 +18,20 @@ use thiserror::Error;
 use wasm_bindgen::prelude::*;
 
 /// Hash bytes with SHA256 and format the result as a hex string.
-pub fn hash_bytes(bytes: &[u8]) -> String {
+pub fn hash_bytes(bytes: impl AsRef<[u8]>) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
+}
+
+/// Hash bytes from a `Read` with SHA256 and format the result as a hex string.
+///
+/// When possible, this function should be used instead of [`hash_bytes`] because
+/// the data can be hashed without reading it all into memory first.
+pub fn hash_read(mut rdr: impl std::io::Read) -> Result<String, std::io::Error> {
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut rdr, &mut hasher)?;
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 #[derive(Debug, Error)]
