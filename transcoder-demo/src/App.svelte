@@ -131,7 +131,10 @@
 		</div>
 	{/if}
 
-	<a href="https://github.com/hazelmeow/wasm-opus-transcoder" target="_blank">
+	<a
+		href="https://github.com/fractalbeauty/wasm-opus-transcoder"
+		target="_blank"
+	>
 		source code
 	</a>
 </main>

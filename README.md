@@ -5,7 +5,7 @@ It also provides some other WASM-compatible utilities for hashing bytes and conv
 
 Encoding to Opus uses [unsafe-libopus](https://github.com/DCNick3/unsafe-libopus)
 and [this patch](https://github.com/DCNick3/opus-rs/tree/unsafe-libopus)
-(actually [my fork](https://github.com/hazelmeow/opus-rs/tree/unsafe-libopus))
+(actually [my fork](https://github.com/fractalbeauty/opus-rs/tree/unsafe-libopus))
 for [opus-rs](https://github.com/SpaceManiac/opus-rs).
 Then we glue that together with [Symphonia](https://github.com/pdeljanov/Symphonia) for audio decoding,
 [Rubato](https://github.com/HEnquist/rubato) for resampling,
@@ -16,4 +16,4 @@ You can see this in `transcoder/`.
 
 There's a Svelte demo in `transcoder-demo/`.
 The transcoding is done in a web worker that comunicates with the UI to prevent it from blocking the page while it's working.
-You can try it online [here](https://hazelmeow.github.io/wasm-opus-transcoder/).
+You can try it online [here](https://fractalbeauty.github.io/wasm-opus-transcoder/).
